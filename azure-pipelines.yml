@@ -1,6 +1,6 @@
 
 # Docker
-# Build a Docker image
+# Build a Docker image and deploy to AKS
 
 trigger:
   - main
@@ -20,15 +20,73 @@ stages:
         displayName: Build
         pool:
           vmImage: ubuntu-latest
+
         steps:
+          - task: Docker@2
+            displayName: Build and push image
+            inputs:
+              containerRegistry: 'AcrServiceConnection'
+              repository: '$(imageRepo)'
+              command: buildAndPush
+              Dockerfile: '$(Build.SourcesDirectory)/app/Dockerfile'
+              tags: |
+                $(tag)
+                latest
 
-        - task: Docker@2
-          displayName: Build and image
-          inputs:
-             containerRegistry: 'AcrServiceConnection'
-             command: build 
-             dockerfile: '$(Build.SourcesDirectory)/app/Dockerfile'
-             tags:
-               $(tag)
-               latest 
+          - task: PublishPipelineArtifact@1
+            displayName: Publish Kubernetes manifests
+            inputs:
+              targetPath: '$(Build.SourcesDirectory)/kubernetes'
+              artifact: 'manifests'
+              publishLocation: 'pipeline'
 
+  - stage: Deploy
+    displayName: Deploy to Dev
+    dependsOn: Build
+    variables:
+      acrsecret: k8sexamplesacrauth
+
+    jobs:
+      - job: Deploy
+        displayName: Deploy to AKS
+        pool:
+          vmImage: ubuntu-latest
+
+        steps:
+          - task: DownloadPipelineArtifact@2
+            displayName: Download Kubernetes manifests
+            inputs:
+              buildType: 'current'
+              artifactName: 'manifests'
+              targetPath: '$(Pipeline.Workspace)/manifests'
+
+          - task: KubernetesManifest@1
+            displayName: Create ACR image pull secret
+            inputs:
+              action: 'createSecret'
+              connectionType: 'azureResourceManager'
+              azureSubscriptionConnection: 'AKSServiceConnection'
+              azureResourceGroup: 'SampleAppRsr'
+              kubernetesCluster: 'aks-deploytoaks-dev'
+              useClusterAdmin: true
+              namespace: 'default'
+              secretType: 'dockerRegistry'
+              secretName: '$(acrsecret)'
+              dockerRegistryEndpoint: 'AcrServiceConnection'
+
+          - task: KubernetesManifest@1
+            displayName: Deploy to AKS
+            inputs:
+              action: 'deploy'
+              connectionType: 'azureResourceManager'
+              azureSubscriptionConnection: 'AKSServiceConnection'
+              azureResourceGroup: 'SampleAppRsr'
+              kubernetesCluster: 'aks-deploytoaks-dev'
+              namespace: 'default'
+              manifests: |
+                $(Pipeline.Workspace)/manifests/deployment.yml
+                $(Pipeline.Workspace)/manifests/service.yml
+              containers: |
+                $(imageRepo):$(tag)
+              imagePullSecrets: |
+                $(acrsecret)
