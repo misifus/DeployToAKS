@@ -64,11 +64,8 @@ stages:
             displayName: Create ACR image pull secret
             inputs:
               action: 'createSecret'
-              connectionType: 'azureResourceManager'
-              azureSubscriptionConnection: 'AKSServiceConnection'
-              azureResourceGroup: 'SampleAppRsr'
-              kubernetesCluster: 'aks-deploytoaks-dev'
-              useClusterAdmin: true
+              connectionType: 'kubernetesServiceConnection'
+              kubernetesServiceConnection: 'AKSServiceConnection'
               namespace: 'default'
               secretType: 'dockerRegistry'
               secretName: '$(acrsecret)'
@@ -78,10 +75,8 @@ stages:
             displayName: Deploy to AKS
             inputs:
               action: 'deploy'
-              connectionType: 'azureResourceManager'
-              azureSubscriptionConnection: 'AKSServiceConnection'
-              azureResourceGroup: 'SampleAppRsr'
-              kubernetesCluster: 'aks-deploytoaks-dev'
+              connectionType: 'kubernetesServiceConnection'
+              kubernetesServiceConnection: 'AKSServiceConnection'
               namespace: 'default'
               manifests: |
                 $(Pipeline.Workspace)/manifests/deployment.yml
